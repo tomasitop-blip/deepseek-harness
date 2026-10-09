@@ -24,7 +24,12 @@ declare module '@deepseek-ai/dsh-llm' {
   }
 }
 
-async function harness(adapter: MockAdapter, maxParallelToolCalls?: number, maxToolCallsPerStep?: number) {
+async function harness(
+  adapter: MockAdapter,
+  maxParallelToolCalls?: number,
+  maxToolCallsPerStep?: number,
+  repeatToolCallThreshold?: number,
+) {
   const ctx = new Context()
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(SessionStore)
@@ -36,6 +41,7 @@ async function harness(adapter: MockAdapter, maxParallelToolCalls?: number, maxT
     agents: [],
     ...maxParallelToolCalls === undefined ? {} : { maxParallelToolCalls },
     ...maxToolCallsPerStep === undefined ? {} : { maxToolCallsPerStep },
+    ...repeatToolCallThreshold === undefined ? {} : { repeatToolCallThreshold },
   })
   ctx.llm.registerAdapter(['mock'], adapter)
   return ctx
@@ -979,12 +985,12 @@ describe('per-step tool-call cap: maxToolCallsPerStep', () => {
     await waitForIdle(ctx, agent)
 
     const log = events(agent)
-    expect(log.findLast(event => event.type === 'turn/end')?.data).toMatchObject({
-      reason: {
-        kind: 'error',
-        error: { message: expect.stringContaining('maxToolCallsPerStep'), code: 'TOOL_CALL_LIMIT_EXCEEDED' },
-      },
+    const capReason = log.findLast(event => event.type === 'turn/end')?.data.reason
+    expect(capReason).toMatchObject({
+      kind: 'error',
+      error: { code: 'TOOL_CALL_LIMIT_EXCEEDED' },
     })
+    expect(capReason?.kind === 'error' ? capReason.error.message : '').toContain('maxToolCallsPerStep')
     expect(executed).toEqual([])
     expect(log.filter(event => event.type === 'tool/call')).toEqual([])
     expect(log.filter(event => event.type === 'tool/result').map(event => [
@@ -1048,5 +1054,49 @@ describe('per-step tool-call cap: maxToolCallsPerStep', () => {
     expect(executed).toEqual(['1'])
     expect(events(agent).findLast(event => event.type === 'turn/end')?.data)
       .toMatchObject({ reason: { kind: 'completed' } })
+  })
+})
+
+describe('in-stream repetition trip: repeatToolCallThreshold', () => {
+  it('rejects invalid repeatToolCallThreshold config at plugin load', async () => {
+    await expect(harness(new MockAdapter([]), undefined, undefined, 0)).rejects.toThrow(/repeatToolCallThreshold/)
+    await expect(harness(new MockAdapter([]), undefined, undefined, 1)).rejects.toThrow(/repeatToolCallThreshold/)
+    await expect(harness(new MockAdapter([]), undefined, undefined, 1.5)).rejects.toThrow(/repeatToolCallThreshold/)
+  })
+
+  it('surfaces a trip as a structured turn error, attempt settlement, and agent/error — never agent/request-error', async () => {
+    const executed: string[] = []
+    const adapter = new MockAdapter([
+      multiCall([1, 2, 3].map(n => ({ id: `c${n}`, name: 'p', args: { id: 'same' } }))),
+      textResponse('never reached'),
+    ])
+    const ctx = await harness(adapter, undefined, undefined, 2)
+    onTestFinished(() => ctx.fiber.dispose())
+    ctx.tools.register(defineContentToolFixture({
+      name: 'p', description: 'probe', parameters: { id: { type: 'string', required: true } },
+      async execute(args) { executed.push(args.id); return [{ type: 'text', text: `done-${args.id}` }] },
+    }))
+    const errors: unknown[] = []
+    const requestErrors: unknown[] = []
+    ctx.on('agent/error', ({ error }) => { errors.push(error) })
+    ctx.on('agent/request-error', async (payload, next) => { requestErrors.push(payload); return next() })
+    const agent = await ctx.agentLoop.create(SessionId('repeat-trip'), { provider: 'mock', model: 'mock' })
+
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await waitForIdle(ctx, agent)
+
+    const log = events(agent)
+    const tripReason = log.findLast(event => event.type === 'turn/end')?.data.reason
+    expect(tripReason).toMatchObject({
+      kind: 'error',
+      error: { code: 'REPEATED_TOOL_CALLS_EXCEEDED' },
+    })
+    expect(tripReason?.kind === 'error' ? tripReason.error.message : '').toContain('repeatToolCallThreshold')
+    expect(log.filter(event => event.type === 'assistant/attempt')).toHaveLength(1)
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatchObject({ name: 'LlmError', code: 'REPEATED_TOOL_CALLS_EXCEEDED' })
+    expect(requestErrors).toEqual([])
+    expect(executed).toEqual([])
+    expect(log.filter(event => event.type === 'tool/call')).toEqual([])
   })
 })

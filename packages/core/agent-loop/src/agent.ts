@@ -447,6 +447,7 @@ export class ReactLoopAgent implements Agent {
         turn,
         step,
         (frame) => { this.dispatch.emit('agent/assistant-stream', { frame }) },
+        this.loopCtx.agentLoop.config.repeatToolCallThreshold.get(),
       )
       let started = false
       try {

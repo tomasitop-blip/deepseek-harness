@@ -4,15 +4,26 @@ import {
   AssistantStreamAccumulator,
   BlockAssembler,
   LlmAttemptId,
+  LlmError,
   type AssistantStreamRecord,
   type ContentBlock,
   type FinishReason,
   type ReplayEnvelope,
   type StreamChunk,
   type TokenUsage,
+  type ToolCallBlock,
 } from '@deepseek-ai/dsh-llm'
 import type { AssistantStreamFrame } from '@deepseek-ai/dsh-agent'
 import type { SessionEventMap, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import { deepEqualJson } from '@deepseek-ai/dsh-util-values'
+import { parseArguments } from './tool-calls.ts'
+
+/** One canonical tool-call form seen in this attempt and its occurrence count. */
+interface SeenToolCall {
+  name: string
+  arguments: unknown
+  count: number
+}
 
 /** Folds one model attempt into one compact stream plus ordered transient frames. */
 export class AssistantStreamAttempt {
@@ -20,6 +31,8 @@ export class AssistantStreamAttempt {
   private readonly assembler = new BlockAssembler()
   private index = 0
   private terminal = false
+  /** Canonical tool-call forms counted toward the repetition trip. */
+  private readonly seenToolCalls: SeenToolCall[] = []
   /** Attempt identity unique within this Agent lifecycle. */
   readonly attemptId: LlmAttemptId
 
@@ -33,6 +46,8 @@ export class AssistantStreamAttempt {
    * @param turn - durable turn owning the request.
    * @param step - durable step owning the request.
    * @param emit - agent-scoped notification publisher.
+   * @param repeatToolCallThreshold - occurrences of one canonical tool-call form
+   *   within this attempt at which {@link push} refuses the stream.
    */
   constructor(
     sessionId: SessionId,
@@ -41,6 +56,7 @@ export class AssistantStreamAttempt {
     readonly turn: number,
     readonly step: number,
     private readonly emit: (frame: AssistantStreamFrame) => void,
+    private readonly repeatToolCallThreshold: number,
   ) {
     this.attemptId = LlmAttemptId(`${sessionId}:${attempt}`)
   }
@@ -56,10 +72,11 @@ export class AssistantStreamAttempt {
     })
   }
 
-  /** Snapshot one chunk once, then feed durable compaction, assembly, and live publication. */
+  /** Snapshot one chunk once, then feed durable compaction, assembly, live publication, and the repetition trip. */
   push(chunk: StreamChunk): void {
     const timed = this.accumulator.push({ time: Date.now(), chunk })
     this.assembler.push(timed.chunk)
+    if (chunk.type === 'block-end' && chunk.block.type === 'tool-call') this.countToolCall(chunk.block)
     this.emit({
       type: 'chunk',
       attemptId: this.attemptId,
@@ -68,6 +85,34 @@ export class AssistantStreamAttempt {
       time: timed.time,
       chunk: timed.chunk,
     })
+  }
+
+  /**
+   * Count one completed tool-call block toward its canonical form and refuse
+   * the stream when a form reaches this attempt's threshold. A repetition
+   * storm never executes anything, so it is stopped here rather than at the
+   * per-step cap, which only sees a committed message.
+   * @param block - the completed tool-call block from `block-end`.
+   * @throws LlmError when one canonical (name, arguments) form reaches the threshold.
+   */
+  private countToolCall(block: ToolCallBlock): void {
+    const argumentsValue = parseArguments(block.arguments)
+    const form = this.seenToolCalls.find(
+      seen => seen.name === block.name && deepEqualJson(seen.arguments, argumentsValue),
+    )
+    if (form === undefined) {
+      this.seenToolCalls.push({ name: block.name, arguments: argumentsValue, count: 1 })
+      return
+    }
+    form.count += 1
+    if (form.count >= this.repeatToolCallThreshold) {
+      throw new LlmError(
+        `assistant stream repeated tool call "${block.name}" with identical arguments ${form.count} times in one attempt`
+        + ` (repeatToolCallThreshold is ${this.repeatToolCallThreshold}): stop repeating the same call and choose a different action,`
+        + ' or raise the agent-loop repeatToolCallThreshold configuration',
+        'REPEATED_TOOL_CALLS_EXCEEDED',
+      )
+    }
   }
 
   /**

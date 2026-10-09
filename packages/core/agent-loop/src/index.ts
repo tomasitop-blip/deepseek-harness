@@ -33,7 +33,7 @@ import { SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persis
 import type { SessionHandle, SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import { ReactLoopAgent } from './agent.ts'
 import { inboxProjectionDefinition } from './inbox.ts'
-import { DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_TOOL_CALLS_PER_STEP } from './constants.ts'
+import { DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_TOOL_CALLS_PER_STEP, DEFAULT_REPEAT_TOOL_CALL_THRESHOLD } from './constants.ts'
 import type {} from './runtime-context.ts'
 
 /** Fiber states that cannot own or serve a new lifecycle. */
@@ -250,7 +250,7 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-export { DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_TOOL_CALLS_PER_STEP }
+export { DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_MAX_TOOL_CALLS_PER_STEP, DEFAULT_REPEAT_TOOL_CALL_THRESHOLD }
 
 /**
  * One launcher-selected session identity for a configured agent. `resume`
@@ -312,6 +312,13 @@ export interface Config {
    * omission defaults to {@link DEFAULT_MAX_TOOL_CALLS_PER_STEP}.
    */
   maxToolCallsPerStep: Volatile<number>
+  /**
+   * Occurrences of one canonical (name, arguments) tool-call form within a
+   * single attempt that end the attempt with a corrective error; omission
+   * defaults to {@link DEFAULT_REPEAT_TOOL_CALL_THRESHOLD}. Load rejects a
+   * non-integer or a value below `2` (a repeat needs two occurrences).
+   */
+  repeatToolCallThreshold: Volatile<number>
   /** Agents created or resumed at plugin startup. */
   agents: (AgentOptions & {
     /** Stable config label used in logs and as the fresh combined-id prefix. */
@@ -323,6 +330,19 @@ export interface Config {
     /** Persisted session to resume instead of creating a fresh session. */
     resumeSessionId?: SessionId
   })[]
+}
+
+/**
+ * Reject a repetition threshold that could not express the trip, fail-loud at
+ * load (the value arrives as the schema's volatile reference): below 2 the
+ * first occurrence of a form would trip, and a non-integer never names an
+ * occurrence count.
+ */
+function validateRepeatToolCallThreshold(threshold: Volatile<number>): void {
+  const value = threshold.get()
+  if (!Number.isInteger(value) || value < 2) {
+    throw new Error(`agent-loop: invalid repeatToolCallThreshold ${value} — must be an integer >= 2`)
+  }
 }
 
 /** Reject self-contained identity conflicts before any configured agent starts. */
@@ -348,9 +368,10 @@ export class AgentLoop extends Service implements AgentFactory {
   static inject = ['agents', 'sessions', 'llm', 'tools', 'systemPrompt', 'sessionProjections']
 
   /** Runtime schema for declarative agents. */
-  static Config: z<{ agents?: Config['agents']; maxParallelToolCalls?: number; maxToolCallsPerStep?: number }, Config> = z.object({
+  static Config: z<{ agents?: Config['agents']; maxParallelToolCalls?: number; maxToolCallsPerStep?: number; repeatToolCallThreshold?: number }, Config> = z.object({
     maxParallelToolCalls: z.number().step(1).min(1).default(DEFAULT_MAX_PARALLEL_TOOL_CALLS).volatile(),
     maxToolCallsPerStep: z.number().step(1).min(1).default(DEFAULT_MAX_TOOL_CALLS_PER_STEP).volatile(),
+    repeatToolCallThreshold: z.number().default(DEFAULT_REPEAT_TOOL_CALL_THRESHOLD).volatile(),
     agents: z.array(z.object({
       id: z.string().required(),
       sessionId: z.string().min(1),
@@ -361,7 +382,7 @@ export class AgentLoop extends Service implements AgentFactory {
       cwd: z.string(),
       resumeSessionId: z.string(),
     })).default([]),
-  }) as z<{ agents?: Config['agents']; maxParallelToolCalls?: number; maxToolCallsPerStep?: number }, Config>
+  }) as z<{ agents?: Config['agents']; maxParallelToolCalls?: number; maxToolCallsPerStep?: number; repeatToolCallThreshold?: number }, Config>
 
   /** Validated configuration owned by the agent-loop service. */
   readonly config: Config
@@ -376,8 +397,10 @@ export class AgentLoop extends Service implements AgentFactory {
       agents: applyLauncherIdentities(config.agents, ctx.get(CONFIGURED_AGENT_IDENTITIES_KEY)),
       maxParallelToolCalls: config.maxParallelToolCalls,
       maxToolCallsPerStep: config.maxToolCallsPerStep,
+      repeatToolCallThreshold: config.repeatToolCallThreshold,
     }
     validateConfiguredAgents(this.config.agents)
+    validateRepeatToolCallThreshold(this.config.repeatToolCallThreshold)
     // Register only after every config validation above has passed, so a
     // rejected constructor leaves no projection unit behind.
     const ownership = this.ownership = new FactoryOwnership(ctx.fiber)
