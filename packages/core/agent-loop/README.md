@@ -49,7 +49,7 @@ Agents declared in the config start automatically when the plugin loads. Each en
 |---|---|---|
 | `maxParallelToolCalls` | `10` | Parallel-safe tool calls in flight per step; `1` is serial |
 | `maxToolCallsPerStep` | `64` | Tool calls one assistant step may carry; a step streaming more fails the turn instead of executing them |
-| `repeatToolCallThreshold` | `8` | Occurrences of one identical tool call within a single attempt before the stream trips and fails the turn |
+| `repeatToolCallThreshold` | `8` | Occurrences of one identical tool call within a single attempt at which the stream trips and fails the turn |
 | `agents[].id` | required | Stable label; a fresh session mints `${id}-session-<uuid>` unless `sessionId` is set |
 | `agents[].provider` / `agents[].model` | — | Model route; both required before dispatch |
 | `agents[].reasoningEffort` | — | Non-empty initial reasoning effort; `agent/request` may override it |
