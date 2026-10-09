@@ -111,7 +111,7 @@ One inbox feeds the driver; injected context waits for a waking message. AgentLo
 
 The loop sends immutable requests with live cancellation and reuses freeze evidence for frozen identities; [agent-loop](../packages/core/agent-loop/README.md) owns construction and cancellation causes.
 
-Failed steps [record missing tool results](../packages/core/agent-loop/README.md#understand-the-implementation).
+Failed steps [record missing tool results](../packages/core/agent-loop/README.md#understand-the-implementation). The [`maxToolCallsPerStep` cap and `repeatToolCallThreshold` trip](../packages/core/agent-loop/README.md#stream-guardrails) end the turn as a structured error before dispatch.
 
 Details: the [sequence diagram](agent-lifecycle.md), the [tool pipeline](tool-execution-pipeline.md), and [cancellation and error recovery](subsystems/core.md#the-agent-handle).
 
