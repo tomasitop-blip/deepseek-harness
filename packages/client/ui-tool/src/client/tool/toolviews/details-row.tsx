@@ -43,8 +43,8 @@ function detailIcon(toolName: string) {
  * @param props - Tool call, row actions, and locale supplied by the keyed slot.
  * @returns A Tool row with structured details or generic input/output.
  */
-export function DetailsRow({ toolName, block, cwd, home, openFile, inspect, useDisclosure, t }: DetailsRowProps) {
-  const model = toolRowModel(toolName, block, cwd, home)
+export function DetailsRow({ toolName, block, phase, cwd, home, openFile, inspect, useDisclosure, t }: DetailsRowProps) {
+  const model = toolRowModel(toolName, block, cwd, home, phase)
   const locale = document.documentElement.lang
   const details = useMemo(() => detailsCardModel(block, t, locale), [block, t, locale])
   const operation = toolName === 'lsp' ? parsedToolCall(block)?.args.operation : undefined

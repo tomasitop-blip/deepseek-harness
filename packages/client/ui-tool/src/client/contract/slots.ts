@@ -75,9 +75,10 @@ export interface ToolCallCommonProps {
   inspect?: (() => void) | undefined
 }
 
-/** Stage-specific tool data; only start/result expose the dispatched call material. */
+/** Stage-specific tool data; only start/result expose dispatched call material; `queued` shares the preparing block. */
 export type ToolCallPhaseProps =
   | { readonly phase: 'preparing'; readonly block: PreparingToolCall }
+  | { readonly phase: 'queued'; readonly block: PreparingToolCall }
   | { readonly phase: 'start'; readonly block: StartedToolCall }
   | { readonly phase: 'result'; readonly block: ToolResultNode }
 
@@ -87,8 +88,8 @@ export type ToolCallOwnerProps = ToolCallCommonProps & ToolCallPhaseProps
 /** Full props of a registered atomic Tool view. */
 export type ToolCallViewProps = PropsRuntime<'tool.call.toolview'>
 
-/** Existing argument/result business components exclude the preparation stage. */
-export type StartedToolCallViewProps = Exclude<ToolCallViewProps, { readonly phase: 'preparing' }>
+/** Argument/result stages; `preparing` and `queued` both lack durable call material. */
+export type StartedToolCallViewProps = Exclude<ToolCallViewProps, { readonly phase: 'preparing' } | { readonly phase: 'queued' }>
 
 /**
  * One settled `ask_user_question` call as its transcript row read it. The row

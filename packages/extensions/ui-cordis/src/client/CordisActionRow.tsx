@@ -14,7 +14,7 @@ export type CordisActionRowProps = ToolCallViewProps & PropsLocale<'cordis'>
 
 /** Render one Stop or Remove call with Cordis-owned localized copy. */
 export function CordisActionRow(props: CordisActionRowProps) {
-  if (props.phase === 'preparing') {
+  if (props.phase === 'preparing' || props.phase === 'queued') {
     const remove = props.toolName === 'cordis_undefine'
     return <CordisPreparingRow {...props}
       icon={remove ? <IconTrashOutlineRegular size={14} /> : <IconStopFillRegular size={14} />}
@@ -24,7 +24,7 @@ export function CordisActionRow(props: CordisActionRowProps) {
   return <StartedCordisActionRow {...props} />
 }
 
-function StartedCordisActionRow({ callId, toolName, block, inspect, t }: Exclude<CordisActionRowProps, { phase: 'preparing' }>) {
+function StartedCordisActionRow({ callId, toolName, block, inspect, t }: Exclude<CordisActionRowProps, { phase: 'preparing' } | { phase: 'queued' }>) {
   const card = cordisActionCard(block)
   const remove = toolName === 'cordis_undefine'
   const summary = card.errorSummary ?? card.pluginId ?? callId

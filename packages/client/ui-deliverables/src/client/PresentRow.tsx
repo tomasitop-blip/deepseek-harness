@@ -29,17 +29,21 @@ function fileNames(raw: string): string {
  * @returns a status row with a result disclosure.
  */
 export function PresentRow(props: PresentRowProps) {
-  return props.phase === 'preparing' ? <PreparingPresentRow {...props} /> : <StartedPresentRow {...props} />
+  // Preparation and the queued wait share one non-expandable status row:
+  // neither stage has durable result material.
+  return props.phase === 'preparing' || props.phase === 'queued'
+    ? <PreparingPresentRow {...props} />
+    : <StartedPresentRow {...props} />
 }
 
-function PreparingPresentRow({ t }: Extract<PresentRowProps, { phase: 'preparing' }>) {
+function PreparingPresentRow({ t }: Extract<PresentRowProps, { phase: 'preparing' } | { phase: 'queued' }>) {
   return <div data-tool="present" data-state="preparing" aria-label={t('row.preparing')}>
     <DisclosureRow title={t('row.title')} icon={<IconDeliverDocRegular size={14} />}
       open={false} expandable={false} onToggle={noop} running />
   </div>
 }
 
-function StartedPresentRow({ block, inspect, t }: Exclude<PresentRowProps, { phase: 'preparing' }>) {
+function StartedPresentRow({ block, inspect, t }: Exclude<PresentRowProps, { phase: 'preparing' } | { phase: 'queued' }>) {
   const settled = 'kind' in block
   const state = !settled ? 'running' : block.error?.code === 'interrupted' ? 'stopped' : block.isError ? 'error' : 'ok'
   const args = (settled ? block.call?.argsRaw : block.argsRaw) ?? ''

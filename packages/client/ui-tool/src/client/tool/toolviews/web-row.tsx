@@ -15,8 +15,8 @@ const WEB_TITLE_KEYS = {
 } as const
 
 /** Lets users expand a completed web search or fetch result. */
-export function WebRow({ toolName, block, inspect, useDisclosure, t }: WebRowProps) {
-  const model = toolRowModel(toolName, block)
+export function WebRow({ toolName, block, phase, inspect, useDisclosure, t }: WebRowProps) {
+  const model = toolRowModel(toolName, block, undefined, undefined, phase)
   const web = webCardModel(block)
   const icon = toolName === 'web_fetch' ? <IconBrowseOutlineRegular size={14} /> : <IconGlobeOutlineRegular size={14} />
   return (

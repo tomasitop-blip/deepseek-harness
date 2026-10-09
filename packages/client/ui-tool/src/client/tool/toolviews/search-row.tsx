@@ -15,8 +15,8 @@ const SEARCH_TITLE_KEYS = {
 } as const
 
 /** Lets users expand grep or glob results and recover capped searches. */
-export function SearchRow({ toolName, block, inspect, useDisclosure, t }: SearchRowProps) {
-  const model = toolRowModel(toolName, block)
+export function SearchRow({ toolName, block, phase, inspect, useDisclosure, t }: SearchRowProps) {
+  const model = toolRowModel(toolName, block, undefined, undefined, phase)
   const search = searchCardModel(block)
   return (
     <ToolRow

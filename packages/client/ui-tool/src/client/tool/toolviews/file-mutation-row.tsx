@@ -30,8 +30,8 @@ function contentKilobytes(block: FileMutationRowProps['block']): number | null {
  * Shows the path and decoded input size through preparation, execution, and
  * settlement, with the applied diff available once the call settles.
  */
-export function FileMutationRow({ toolName, block, cwd, home, openFile, inspect, useDisclosure, t }: FileMutationRowProps) {
-  const model = toolRowModel(toolName, block, cwd, home)
+export function FileMutationRow({ toolName, block, phase, cwd, home, openFile, inspect, useDisclosure, t }: FileMutationRowProps) {
+  const model = toolRowModel(toolName, block, cwd, home, phase)
   const diff = diffCardModel(block)
   const kilobytes = contentKilobytes(block)
   const size = kilobytes === null ? null : t('tool.preparing.content', { kilobytes })

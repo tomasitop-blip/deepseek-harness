@@ -30,8 +30,8 @@ export type GenericToolCardProps = ToolCallOwnerProps & {
 }
 
 /** @param props - current tool stage and locale. @returns its preparation or dispatched card. */
-export function GenericToolCard({ toolName, block, cwd, home, openFile, inspect, useDisclosure, t }: GenericToolCardProps) {
-  const model = toolRowModel(toolName, block, cwd, home)
+export function GenericToolCard({ toolName, block, phase, cwd, home, openFile, inspect, useDisclosure, t }: GenericToolCardProps) {
+  const model = toolRowModel(toolName, block, cwd, home, phase)
   const autoReview = model.autoReviewDenial === null
     ? null
     : localizeAutoReviewDenial(model.autoReviewDenial, t)

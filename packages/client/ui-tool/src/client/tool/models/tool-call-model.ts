@@ -8,6 +8,7 @@
 import type { ToolArgs, ToolCallBlock, ToolResultNode } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { LocaleKeysOf } from '@deepseek-ai/dsh-client-ui-slots'
 import { abbreviateHomePath, isAbsoluteWorkspacePath, relativizeToCwd } from '@deepseek-ai/dsh-util-workspace-path'
+import type { ToolCallPhaseProps } from '../../contract/slots.ts'
 import { recordedAbsolutePath } from './recorded-path.ts'
 
 export type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-chat/client'
@@ -16,7 +17,7 @@ export type { ToolCallBlock } from '@deepseek-ai/dsh-client-ui-chat/client'
 export type ToolRowVariant = 'search' | 'read' | 'bash' | 'write' | 'edit' | 'code' | 'others'
 
 /** Row lifecycle state used by summary styling and accessible status text. */
-export type ToolRowState = 'preparing' | 'running' | 'ok' | 'error' | 'stopped'
+export type ToolRowState = 'preparing' | 'queued' | 'running' | 'ok' | 'error' | 'stopped'
 
 /** Locale-neutral structured fact consumed only by the user-facing Tool row. */
 export interface AutoReviewDenial {
@@ -297,9 +298,12 @@ export function formatToolBody(variant: ToolRowVariant, argsRaw: string): string
  * @param block - preparing call, dispatched call, or result from the snapshot.
  * @param cwd - session workspace root; workspace-rooted path summaries display relative to it.
  * @param home - host account home; a leftover POSIX home path displays as `~`.
+ * @param phase - dispatched stage; `queued` marks a committed call still waiting to run.
  * @returns the row model.
  */
-export function toolRowModel(toolName: string, block: ToolCallBlock, cwd?: string, home?: string): ToolRowModel {
+export function toolRowModel(
+  toolName: string, block: ToolCallBlock, cwd?: string, home?: string, phase?: ToolCallPhaseProps['phase'],
+): ToolRowModel {
   const variant = classifyTool(toolName)
   const titleKey = toolTitleKey(toolName)
   const done = 'kind' in block
@@ -311,7 +315,8 @@ export function toolRowModel(toolName: string, block: ToolCallBlock, cwd?: strin
     && (isAbsoluteWorkspacePath(argumentPath) || done && !block.isError && block.parentCallId === undefined)
   const filePath = argumentPath === undefined ? undefined
     : recordedPath ?? (canUseArgumentPath ? argumentPath : undefined)
-  const state: ToolRowState = !done ? block.phase === 'preparing' ? 'preparing' : 'running'
+  const state: ToolRowState = !done
+    ? phase === 'queued' ? 'queued' : block.phase === 'preparing' ? 'preparing' : 'running'
     : block.error?.code === 'interrupted' ? 'stopped'
       : block.isError ? 'error' : 'ok'
   // The argument view serves every stage; the raw text is the fallback when it carries nothing useful.

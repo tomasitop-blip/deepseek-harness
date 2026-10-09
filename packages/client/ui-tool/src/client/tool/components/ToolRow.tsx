@@ -104,6 +104,7 @@ function stopLinkClick(event: MouseEvent<HTMLAnchorElement>): void {
 function stateStatus(state: ToolRowState, t: TranslateNS<'conversation'>): string | null {
   switch (state) {
     case 'preparing': return t('row.preparing')
+    case 'queued': return t('row.queued')
     case 'running': return t('row.running')
     case 'error': return t('row.failed')
     case 'stopped': return t('row.stopped')
@@ -167,14 +168,14 @@ export const ToolRow = memo(function ToolRow({
   const inputRaw = bodyRaw ?? null
   const outputText = output ?? null
   const card = askQuestionBody ?? terminalBody ?? diffBody ?? readBody ?? imageBody ?? searchBody ?? webBody ?? detailsBody
-  const expandable = state !== 'preparing' && (inputRaw !== null || outputText !== null || card !== null)
+  const expandable = state !== 'preparing' && state !== 'queued' && (inputRaw !== null || outputText !== null || card !== null)
   const open = expanded && expandable
   const bodyText = useMemo(
     () => open && card === null && inputRaw !== null ? formatToolBody(variant, inputRaw) : null,
     [card, inputRaw, open, variant],
   )
   const status = stateStatus(state, t)
-  const running = state === 'running' || state === 'preparing'
+  const running = state === 'running' || state === 'preparing' || state === 'queued'
   const normalSummary = terminalBody?.description ?? (open ? detailsBody?.expandedSummary ?? summary : summary)
   // A failure keeps its first result line when available and otherwise turns
   // the ordinary summary red. An interruption turns the tool-owned summary

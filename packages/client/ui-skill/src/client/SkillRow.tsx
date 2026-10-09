@@ -100,7 +100,9 @@ function stateStatus(state: SkillRowState, t: SkillRowProps['t']): string | null
  * @returns the dedicated skill row.
  */
 export function SkillRow(props: SkillRowProps) {
-  if (props.phase === 'preparing') return <div className={css.card} data-tool="skill" data-state="preparing">
+  // Preparation and the queued wait share one compact row: neither stage has
+  // durable call material to present.
+  if (props.phase === 'preparing' || props.phase === 'queued') return <div className={css.card} data-tool="skill" data-state="preparing">
     <div className={css.row}>
       <span className={css.leading}><IconSkillOutlineRegular size={14} /></span>
       <span className={css.visuallyHidden}>{props.t('row.preparing')}</span>
@@ -110,7 +112,7 @@ export function SkillRow(props: SkillRowProps) {
   return <StartedSkillRow {...props} />
 }
 
-function StartedSkillRow({ block, inspect, t }: Exclude<SkillRowProps, { phase: 'preparing' }>) {
+function StartedSkillRow({ block, inspect, t }: Exclude<SkillRowProps, { phase: 'preparing' } | { phase: 'queued' }>) {
   const model = skillRowModel(block)
   const [expanded, setExpanded] = useState(false)
   const expandable = model.output !== null

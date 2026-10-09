@@ -28,6 +28,7 @@ const BASH_ICON = <IconApiOutlineRegular size={14} />
 function stateStatus(state: ToolRowState, t: BashRowProps['t']): string | null {
   switch (state) {
     case 'preparing': return t('row.preparing')
+    case 'queued': return t('row.queued')
     case 'running': return t('bash.running')
     case 'error': return t('bash.failed')
     case 'stopped': return t('bash.stopped')
@@ -41,8 +42,8 @@ function stateStatus(state: ToolRowState, t: BashRowProps['t']): string | null {
  * @param props - tool call, Session sources, locale, and inspection callback.
  * @returns the Bash output row.
  */
-export const BashRow = memo(function BashRow({ toolName, block, sessionId, useSessions, inspect, useDisclosure, t }: BashRowProps) {
-  const model = useMemo(() => toolRowModel(toolName, block), [toolName, block])
+export const BashRow = memo(function BashRow({ toolName, block, phase, sessionId, useSessions, inspect, useDisclosure, t }: BashRowProps) {
+  const model = useMemo(() => toolRowModel(toolName, block, undefined, undefined, phase), [toolName, block, phase])
   // An omitted shell workdir is the session workspace; relative values resolve
   // against it before reaching the terminal primitive.
   const cwd = useSessions(list => list.byId[sessionId]?.cwd)
@@ -75,7 +76,7 @@ export const BashRow = memo(function BashRow({ toolName, block, sessionId, useSe
   const settlementLine = state === 'error'
     ? model.errorSummary ?? normalSummary
     : state === 'stopped' ? t('bash.stopped') : null
-  const running = state === 'running' || state === 'preparing'
+  const running = state === 'running' || state === 'preparing' || state === 'queued'
   const toggleFromKeyboard = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
     if (!expandable || (event.key !== 'Enter' && event.key !== ' ')) return
     event.preventDefault()

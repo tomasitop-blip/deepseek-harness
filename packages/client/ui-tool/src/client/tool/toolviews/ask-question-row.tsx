@@ -212,9 +212,9 @@ type AskQuestionRowProps = ToolCallViewProps & PropsLocale<'conversation'> & Inj
 
 /** Summarizes a pending, answered, cancelled, or interrupted question set. */
 export function AskQuestionRow({
-  callId, toolName, block, inspect, useDisclosure, useProjection, revealPanel, reviewPanel, t,
+  callId, toolName, block, phase, inspect, useDisclosure, useProjection, revealPanel, reviewPanel, t,
 }: AskQuestionRowProps) {
-  const model = toolRowModel(toolName, block)
+  const model = toolRowModel(toolName, block, undefined, undefined, phase)
   // The `userQuestions` projection lists exactly the timed calls that can still
   // take an answer — the running ones and the ones the agent continued past —
   // so it, not the recorded result, decides whether this row offers its panel.

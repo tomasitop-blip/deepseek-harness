@@ -37,7 +37,7 @@ function stateStatus(state: CordisToolState): CordisKey | null {
 
 /** Render one immutable Package definition. */
 export function CordisDefineRow(props: CordisDefineRowProps) {
-  if (props.phase === 'preparing') return <CordisPreparingRow {...props}
+  if (props.phase === 'preparing' || props.phase === 'queued') return <CordisPreparingRow {...props}
     icon={<IconCodeOutlineRegular size={14} />} title={props.t('row.defineTitle')}
     className={css.card} rowClassName={css.row} titleClassName={css.title} />
   return <StartedCordisDefineRow {...props} />
@@ -45,7 +45,7 @@ export function CordisDefineRow(props: CordisDefineRowProps) {
 
 function StartedCordisDefineRow({
   callId, block, inspect, useInventory, useLoaded, t,
-}: Exclude<CordisDefineRowProps, { phase: 'preparing' }>) {
+}: Exclude<CordisDefineRowProps, { phase: 'preparing' } | { phase: 'queued' }>) {
   const card = cordisDefineCard(block)
   const inventory = useInventory(snapshot => snapshot)
   const loaded = useLoaded(snapshot => snapshot)

@@ -34,7 +34,7 @@ const READING_LABELS = {
 
 /** Render one activation result and, when eligible, its Package-owned view. */
 export function CordisRunRow(props: CordisRunRowProps) {
-  if (props.phase === 'preparing') return <CordisPreparingRow {...props}
+  if (props.phase === 'preparing' || props.phase === 'queued') return <CordisPreparingRow {...props}
     icon={<IconCodeOutlineRegular size={14} />} title={props.t('row.runTitle')}
     className={css.card} rowClassName={css.row} titleClassName={css.title} />
   return <StartedCordisRunRow {...props} />
@@ -43,7 +43,7 @@ export function CordisRunRow(props: CordisRunRowProps) {
 function StartedCordisRunRow({
   callId, block, inspect, renderSlot, useInventory, useLoaded, useRunCards, useActiveRuns,
   onObserveRunCard, t,
-}: Exclude<CordisRunRowProps, { phase: 'preparing' }>) {
+}: Exclude<CordisRunRowProps, { phase: 'preparing' } | { phase: 'queued' }>) {
   const card = cordisRunCard(block)
   const inventory = useInventory(snapshot => snapshot)
   const loaded = useLoaded(snapshot => snapshot)
