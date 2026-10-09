@@ -35,6 +35,8 @@ Agents declared in the config start automatically when the plugin loads. Each en
 - name: '@deepseek-ai/dsh-agent-loop'
   config:
     maxParallelToolCalls: 10
+    maxToolCallsPerStep: 64
+    repeatToolCallThreshold: 8
     agents:
       - id: 'main'
         provider: deepseek
@@ -46,6 +48,8 @@ Agents declared in the config start automatically when the plugin loads. Each en
 | Field | Default | Meaning |
 |---|---|---|
 | `maxParallelToolCalls` | `10` | Parallel-safe tool calls in flight per step; `1` is serial |
+| `maxToolCallsPerStep` | `64` | Tool calls one assistant step may carry; a step streaming more fails the turn instead of executing them |
+| `repeatToolCallThreshold` | `8` | Occurrences of one identical tool call within a single attempt at which the stream trips and fails the turn |
 | `agents[].id` | required | Stable label; a fresh session mints `${id}-session-<uuid>` unless `sessionId` is set |
 | `agents[].provider` / `agents[].model` | — | Model route; both required before dispatch |
 | `agents[].reasoningEffort` | — | Non-empty initial reasoning effort; `agent/request` may override it |
@@ -54,7 +58,12 @@ Agents declared in the config start automatically when the plugin loads. Each en
 | `agents[].sessionId` | — | Exact identity: first use creates, a remount resumes materialized history |
 | `agents[].resumeSessionId` | — | Load this persisted session instead of creating one; mutually exclusive with `sessionId` |
 
-The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-agent-loop) lists every accepted field. `maxParallelToolCalls` is a volatile Config field sampled for the next tool group; `agents` remains startup configuration.
+The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-agent-loop) lists every accepted field. `maxParallelToolCalls`, `maxToolCallsPerStep`, and `repeatToolCallThreshold` are volatile Config fields read when their value applies (the next tool group, the step, the attempt); `agents` remains startup configuration.
+
+<a id="stream-guardrails"></a>
+### Stream guardrails
+
+Three independent bounds stop an unbounded model stream. `maxToolCallsPerStep` (default `64`) fails a step that streams more tool calls than one step may execute; the `dsh-llm-pi-ai` provider profile's `streamMaxDurationMs` (default `120_000`) stops a stream that keeps producing past its deadline even while chunks keep arriving; `repeatToolCallThreshold` (default `8`) ends an attempt that repeats one identical tool call that many times. Each trip ends the turn with a structured, corrective error, and failed-step recovery pairs every streamed tool call with a result so later requests stay valid.
 
 ### Create or resume agents programmatically
 
@@ -103,7 +112,7 @@ The loop deep-freezes each derived message identity on its first request and reu
 | [`src/inbox.ts`](src/inbox.ts) | Package-internal `ReactLoopInbox`: durable projection, structural commands, and loop-only claim state |
 | [`src/tool-calls.ts`](src/tool-calls.ts) | Tool scheduling: exclusive barriers and the bounded parallel pool |
 | [`src/runtime-context.ts`](src/runtime-context.ts) | Per-step runtime-context snapshot handling |
-| [`src/constants.ts`](src/constants.ts) | `DEFAULT_MAX_PARALLEL_TOOL_CALLS` |
+| [`src/constants.ts`](src/constants.ts) | `DEFAULT_MAX_PARALLEL_TOOL_CALLS`, `DEFAULT_MAX_TOOL_CALLS_PER_STEP` |
 
 ### Creation and teardown
 

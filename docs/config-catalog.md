@@ -102,6 +102,19 @@ export interface Config {
    * omission defaults to {@link DEFAULT_MAX_PARALLEL_TOOL_CALLS}.
    */
   maxParallelToolCalls: Volatile<number>
+  /**
+   * Maximum tool calls one assistant step may carry. A step streaming more
+   * fails the turn with a corrective error instead of executing the excess;
+   * omission defaults to {@link DEFAULT_MAX_TOOL_CALLS_PER_STEP}.
+   */
+  maxToolCallsPerStep: Volatile<number>
+  /**
+   * Occurrences of one canonical (name, arguments) tool-call form within a
+   * single attempt that end the attempt with a corrective error; omission
+   * defaults to {@link DEFAULT_REPEAT_TOOL_CALL_THRESHOLD}. Load rejects a
+   * non-integer or a value below `2` (a repeat needs two occurrences).
+   */
+  repeatToolCallThreshold: Volatile<number>
   /** Agents created or resumed at plugin startup. */
   agents: (AgentOptions & {
     /** Stable config label used in logs and as the fresh combined-id prefix. */
@@ -1743,7 +1756,7 @@ export interface Config extends ProtocolConfig {
 
 - `inject`: `llm`
 - `refs`: `Api` (`@earendil-works/pi-ai`) · `CacheRetention` (`@earendil-works/pi-ai`) · `Model` (`@earendil-works/pi-ai`) · `ModelThinkingLevel` (`@earendil-works/pi-ai`) · `OpenAICompletionsCompat` (`@earendil-works/pi-ai`) · [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · `ThinkingBudgets` (`@earendil-works/pi-ai`) · `Transport` (`@earendil-works/pi-ai`) · `Volatile` (`@deepseek-ai/cordis`)
-- `source`: [`packages/llm/llm-pi-ai/src/config.ts:222`](../packages/llm/llm-pi-ai/src/config.ts)
+- `source`: [`packages/llm/llm-pi-ai/src/config.ts:229`](../packages/llm/llm-pi-ai/src/config.ts)
 
 ```ts config-catalog
 /** Plugin configuration: the provider routes this instance owns. */
@@ -1832,6 +1845,8 @@ export interface PiAiProviderProfile {
   websocketConnectTimeoutMs?: number
   /** Maximum provider idle time while one stream read is outstanding. */
   streamIdleTimeoutMs?: number
+  /** Maximum total duration of one streamed response, however steadily chunks arrive. */
+  streamMaxDurationMs?: number
   /**
    * Maximum base64-encoded image payload per request. When a request's
    * accumulated images exceed it, the oldest images are replaced by text

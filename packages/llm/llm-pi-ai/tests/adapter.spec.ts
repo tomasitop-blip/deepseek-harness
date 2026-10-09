@@ -437,6 +437,42 @@ describe('PiAiAdapter provider routing', () => {
     expect(server.paths).toEqual(['/chat/completions'])
     expect(server.closedResponses).toBe(1)
   })
+
+  it('stops the SDK request when the stream duration deadline expires while chunks keep flowing', async () => {
+    const deltas = Array.from({ length: 8 }, () =>
+      '{"choices":[{"delta":{"role":"assistant","content":"x"},"index":0,"finish_reason":null}]}')
+    const server = await mockServer([{ events: deltas, delayMs: 5, holdOpen: true }])
+    const ctx = await harness(server.url, { streamMaxDurationMs: 20 })
+    const controller = new AbortController()
+    onTestFinished(async () => {
+      controller.abort()
+      await ctx.fiber.dispose()
+    })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+    const pending = assemble(ctx, { model: 'deepseek-flash', messages: [], signal: controller.signal })
+    await server.requestReceived
+    expect(server.closedResponses).toBe(0)
+    // Chunks keep arriving across the deadline — the idle watchdog never fires.
+    await vi.advanceTimersByTimeAsync(20)
+    vi.useRealTimers()
+
+    const result = await pending
+    expect(result.finish).toMatchObject({ kind: 'error', failure: { code: 'TIMEOUT' } })
+    await server.responseClosed
+
+    expect(server.closedResponses).toBe(1)
+  })
+
+  it('lets a stream completing under streamMaxDurationMs finish normally', async () => {
+    const server = await mockServer([{ events: textEvents }])
+    const ctx = await harness(server.url, { streamMaxDurationMs: 5_000 })
+
+    const result = await assemble(ctx, { model: 'deepseek-flash', messages: [] })
+
+    expect(result.finish).toEqual({ kind: 'stop' })
+    expect(result.message.content).toEqual([{ type: 'text', text: 'hello' }])
+  })
 })
 
 describe('provider profile lifecycle', () => {
@@ -925,6 +961,9 @@ describe('provider profile lifecycle', () => {
       { streamIdleTimeoutMs: 0 },
       { streamIdleTimeoutMs: Number.NaN },
       { streamIdleTimeoutMs: MAX_TIMER_DELAY_MS + 1 },
+      { streamMaxDurationMs: 0 },
+      { streamMaxDurationMs: Number.NaN },
+      { streamMaxDurationMs: MAX_TIMER_DELAY_MS + 1 },
       { maxRequestImageBytes: 0 },
       { maxRequestImageBytes: 1.5 },
       { maxRequestImageBytes: Number.NaN },
@@ -1006,6 +1045,12 @@ describe('provider profile lifecycle', () => {
     expect(() => resolveProfiles({
       openai: { streamIdleTimeoutMs: MAX_TIMER_DELAY_MS + 1 },
     })).toThrow(/streamIdleTimeoutMs.*no greater/)
+    expect(() => resolveProfiles({
+      openai: { streamMaxDurationMs: 0 },
+    })).toThrow(/streamMaxDurationMs.*positive finite/)
+    expect(() => resolveProfiles({
+      openai: { streamMaxDurationMs: MAX_TIMER_DELAY_MS + 1 },
+    })).toThrow(/streamMaxDurationMs.*no greater/)
   })
 })
 

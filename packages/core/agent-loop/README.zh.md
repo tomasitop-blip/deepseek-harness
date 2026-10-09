@@ -35,6 +35,8 @@ kind: "package-reference"
 - name: '@deepseek-ai/dsh-agent-loop'
   config:
     maxParallelToolCalls: 10
+    maxToolCallsPerStep: 64
+    repeatToolCallThreshold: 8
     agents:
       - id: 'main'
         provider: deepseek
@@ -46,6 +48,8 @@ kind: "package-reference"
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `maxParallelToolCalls` | `10` | 每个步骤同时在途的并行安全工具调用数；`1` 为串行 |
+| `maxToolCallsPerStep` | `64` | 单个助手步骤可携带的工具调用数上限；流式产出更多的步骤会以错误结束本轮，而不会执行这些调用 |
+| `repeatToolCallThreshold` | `8` | 单次尝试内某个相同工具调用出现的次数上限；流式产出达到该次数时该次尝试中止并以错误结束本轮 |
 | `agents[].id` | 必填 | 稳定标签；未设置 `sessionId` 时，全新会话会生成 `${id}-session-<uuid>` |
 | `agents[].provider` / `agents[].model` | — | 模型路由；分发前两者都必须存在 |
 | `agents[].reasoningEffort` | — | 非空的初始推理强度；`agent/request` 可以覆盖它 |
@@ -54,7 +58,12 @@ kind: "package-reference"
 | `agents[].sessionId` | — | 确切身份：首次使用创建，重新挂载时恢复已实体化的历史 |
 | `agents[].resumeSessionId` | — | 加载这个持久化会话而不是创建新会话；与 `sessionId` 互斥 |
 
-生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-agent-loop) 列出所有接受的字段。`maxParallelToolCalls` 是在下一个工具组开始时读取的 volatile Config 字段；`agents` 仍是启动配置。
+生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-agent-loop) 列出所有接受的字段。`maxParallelToolCalls`、`maxToolCallsPerStep` 与 `repeatToolCallThreshold` 是在其生效时机读取的 volatile Config 字段（下一个工具组、该步骤、该次尝试）；`agents` 仍是启动配置。
+
+<a id="stream-guardrails"></a>
+### 流式守卫
+
+三个独立的上限约束无界模型流。`maxToolCallsPerStep`（默认 `64`）会让流式产出超过单步可执行数量的工具调用的步骤以错误结束；`dsh-llm-pi-ai` 提供方 profile 的 `streamMaxDurationMs`（默认 `120_000`）会终止在分块持续到达的情况下仍超过截止时间的流；`repeatToolCallThreshold`（默认 `8`）会在单次尝试内某个相同工具调用重复达到该次数时中止该次尝试。每次触发都会以带纠正说明的结构化错误结束本轮，失败步骤的恢复机制会为已流出的每个工具调用补齐结果，使后续请求保持有效。
 
 ### 以编程方式创建或恢复 agent
 
@@ -103,7 +112,7 @@ const handle = await ctx.agents.create({
 | [`src/inbox.ts`](src/inbox.ts) | 包内部的 `ReactLoopInbox`：持久投影、结构化命令与仅供循环使用的领取状态 |
 | [`src/tool-calls.ts`](src/tool-calls.ts) | 工具调度：独占屏障与有界并行池 |
 | [`src/runtime-context.ts`](src/runtime-context.ts) | 逐步骤运行时上下文快照处理 |
-| [`src/constants.ts`](src/constants.ts) | `DEFAULT_MAX_PARALLEL_TOOL_CALLS` |
+| [`src/constants.ts`](src/constants.ts) | `DEFAULT_MAX_PARALLEL_TOOL_CALLS`、`DEFAULT_MAX_TOOL_CALLS_PER_STEP` |
 
 ### 创建与拆除
 

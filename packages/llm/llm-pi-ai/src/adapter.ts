@@ -57,7 +57,7 @@ import type {
   ToolSchema,
 } from '@deepseek-ai/dsh-llm'
 import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
+import { deadline, idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ResolvedPiAiProviderProfile } from './config.ts'
 import { toPiContext } from './context.ts'
 import { conversationUpdates, createModels, getSupportedThinkingLevels } from './models.ts'
@@ -374,7 +374,9 @@ export class PiAiAdapter extends LlmAdapter {
       ? consumer.signal
       : AbortSignal.any([options.signal, consumer.signal])
     const streamIdleTimeoutMs = profile.streamIdleTimeoutMs
-    using watchdog = idleWatchdog(upstream, streamIdleTimeoutMs, 'LLM_STREAM_IDLE_TIMEOUT')
+    const streamMaxDurationMs = profile.streamMaxDurationMs
+    using duration = deadline(upstream, streamMaxDurationMs, 'LLM_STREAM_MAX_DURATION')
+    using watchdog = idleWatchdog(duration.signal, streamIdleTimeoutMs, 'LLM_STREAM_IDLE_TIMEOUT')
 
     try {
       const containsImage = options.messages.some(message => contentHasImage(message.content))
@@ -418,6 +420,14 @@ export class PiAiAdapter extends LlmAdapter {
             exhausted = true
             return
           }
+          // pi-ai never throws mid-stream: the duration abort reaches us as its
+          // in-band aborted finish, which the catch below classifies as the
+          // timeout it is rather than a caller abort.
+          if (result.value.type === 'finish'
+            && result.value.reason.kind === 'aborted'
+            && timeoutOf(watchdog.signal, 'LLM_STREAM_MAX_DURATION') !== undefined) {
+            throw new Error('pi-ai stream aborted at its duration deadline')
+          }
           yield result.value
         }
       } finally {
@@ -432,6 +442,9 @@ export class PiAiAdapter extends LlmAdapter {
     } catch (error: unknown) {
       if (timeoutOf(watchdog.signal, 'LLM_STREAM_IDLE_TIMEOUT') !== undefined) {
         throw new LlmError(`pi-ai stream idle timeout after ${streamIdleTimeoutMs}ms`, 'TIMEOUT', { cause: error })
+      }
+      if (timeoutOf(watchdog.signal, 'LLM_STREAM_MAX_DURATION') !== undefined) {
+        throw new LlmError(`pi-ai stream exceeded its ${streamMaxDurationMs}ms maximum duration`, 'TIMEOUT', { cause: error })
       }
       if (options.signal?.aborted) {
         throw new LlmError('pi-ai request aborted by caller', 'ABORTED', { cause: error })

@@ -102,7 +102,7 @@ export async function executeToolCalls(
 }
 
 /** Parse model arguments, preserving invalid JSON as text and mapping empty input to `{}`. */
-function parseArguments(raw: string): unknown {
+export function parseArguments(raw: string): unknown {
   try {
     return raw ? JSON.parse(raw) : {}
   } catch {
