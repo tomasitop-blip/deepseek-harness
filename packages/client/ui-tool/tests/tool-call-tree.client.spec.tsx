@@ -5,7 +5,8 @@ import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { bindDisclosure, useDisclosure } from '@deepseek-ai/dsh-client-ui-chat/src/client/chat/use-disclosure.ts'
 import type { SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { ToolCallBlock, ToolResultNode } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { ChatConversationViewNode, ChatNode, ChatSnapshot, ToolCallBlock, ToolResultNode, UseChat } from '@deepseek-ai/dsh-client-ui-chat/client'
+import { EMPTY_CHAT_SNAPSHOT } from '@deepseek-ai/dsh-client-ui-chat/client'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type { ToolCallOwnerProps, ToolTreeProps } from '../src/client/contract/slots.ts'
@@ -23,13 +24,57 @@ const root = (callId: string, call: ToolResultNode['call']): ToolResultNode => (
   content: [], isError: false, subCalls: [],
 })
 
+/** Chat node shapes the queued-selector fixture indexes. */
+type FixtureNode = ChatNode<'assistant-step'> | ChatNode<'tool-call'>
+
+/** One settled/streaming assistant-step Chat node for the queued selector. */
+function assistantStepNode(turn: number, step: number, status: 'running' | 'settled', callId: string): ChatNode<'assistant-step'> {
+  const key = `assistant:${turn}:${step}`
+  return {
+    key, id: key, kind: 'assistant-step', target: 'chat', anchorSeq: 1,
+    location: { kind: 'session' }, visibility: 'visible',
+    data: { status, turn, step, time: 1, blocks: [{ kind: 'tool-call', callId, name: 'bash', argsRaw: '{}' }] },
+  }
+}
+
+/** One tool-call Chat node inside a step, for step-index shape coverage. */
+function toolStepNode(turn: number, step: number, callId: string): ChatNode<'tool-call'> {
+  const key = `tool:${turn}:${step}`
+  return {
+    key, id: key, kind: 'tool-call', target: 'chat', anchorSeq: 2,
+    location: { kind: 'session' }, visibility: 'visible',
+    data: { root: { phase: 'preparing', args: PartialArguments.EMPTY, callId, name: 'bash', turn, step, time: 1, subCalls: [] } },
+  }
+}
+
+/** Minimal Chat snapshot exposing only the step index and node store the queued selector reads. */
+function chatSnapshot(nodes: readonly FixtureNode[]): ChatSnapshot {
+  const byKey = new Map<string, ChatConversationViewNode>(nodes.map(node => [node.key, node]))
+  return {
+    ...EMPTY_CHAT_SNAPSHOT,
+    nodes: {
+      ...EMPTY_CHAT_SNAPSHOT.nodes,
+      values: () => nodes,
+      get: key => byKey.get(key),
+    },
+    locations: {
+      ...EMPTY_CHAT_SNAPSHOT.locations,
+      getStep: (turn, step) => nodes
+        .filter(node => node.kind === 'assistant-step' && node.data.turn === turn && node.data.step === step)
+        .map(node => node.key),
+    },
+  }
+}
+
 function props(
   block: ToolCallBlock,
   home?: string,
   owners?: ToolCallOwnerProps[],
+  chatNodes: readonly FixtureNode[] = [],
 ): ToolTreeProps {
   const snapshot = {} as SessionSnapshot
   const useSession = ((selector: (value: SessionSnapshot) => unknown) => selector(snapshot)) as ToolTreeProps['useSession']
+  const useChat = ((selector: (value: ChatSnapshot) => unknown) => selector(chatSnapshot(chatNodes))) as UseChat
   const renderSlot = ((_key: string, owner: ToolCallOwnerProps, options?: { fallback?: React.ReactNode }) => {
     owners?.push(owner)
     return options?.fallback ?? null
@@ -38,6 +83,7 @@ function props(
     useDisclosure,
     useTurnData: () => undefined,
     useSession,
+    useChat,
     renderSlot,
     node: {
       key: `tool:${block.callId}`,
@@ -80,12 +126,46 @@ describe('ToolCallTree', () => {
   it('dispatches preparation through the existing keyed toolview with no argument fields', () => {
     const owners: ToolCallOwnerProps[] = []
     const view = render(<ToolCallTree {...props({
-      phase: 'preparing', args: PartialArguments.EMPTY, callId: 'preparing', name: 'write', turn: 1, step: 1, time: 1, subCalls: [],
+      phase: 'preparing', args: PartialArguments.EMPTY, callId: 'preparing', name: 'write', turn: 1, step: 1, time: 1,
+      subCalls: [root('preparing-child', { name: 'custom_child', argsRaw: '{}' })],
     }, undefined, owners)} />)
     expect(owners[0]).toMatchObject({ phase: 'preparing', callId: 'preparing', toolName: 'write' })
     expect(owners[0]?.block).not.toHaveProperty('argsRaw')
     expect(view.container.querySelector('[data-chat-call-id="preparing"] [data-state="preparing"]')).not.toBeNull()
+    expect(view.container.querySelector('[data-subcalls]')).toBeNull()
     expect(view.queryByRole('button')).toBeNull()
+  })
+
+  it('marks a preparing call queued once its step\'s assistant message has settled', () => {
+    const owners: ToolCallOwnerProps[] = []
+    const view = render(<ToolCallTree {...props({
+      phase: 'preparing', args: PartialArguments.EMPTY, callId: 'q1', name: 'bash', turn: 1, step: 1, time: 1,
+      subCalls: [root('q1-child', { name: 'custom_child', argsRaw: '{}' })],
+    }, undefined, owners, [assistantStepNode(1, 1, 'settled', 'q1')])} />)
+    expect(owners[0]).toMatchObject({ phase: 'queued', callId: 'q1', toolName: 'bash' })
+    expect(owners[0]?.block).not.toHaveProperty('argsRaw')
+    expect(view.container.querySelector('[data-chat-call-id="q1"] [data-state="queued"]')).not.toBeNull()
+    expect(view.container.querySelector('[data-subcalls]')).toBeNull()
+    expect(view.queryByRole('button')).toBeNull()
+  })
+
+  it('keeps a preparing call preparing while its step\'s assistant message is still streaming', () => {
+    const owners: ToolCallOwnerProps[] = []
+    render(<ToolCallTree {...props({
+      phase: 'preparing', args: PartialArguments.EMPTY, callId: 'q2', name: 'bash', turn: 1, step: 1, time: 1, subCalls: [],
+    }, undefined, owners, [assistantStepNode(1, 1, 'running', 'q2')])} />)
+    expect(owners[0]?.phase).toBe('preparing')
+  })
+
+  it('keeps a preparing call preparing when its step has no settled assistant message', () => {
+    const owners: ToolCallOwnerProps[] = []
+    render(<ToolCallTree {...props({
+      phase: 'preparing', args: PartialArguments.EMPTY, callId: 'q3', name: 'bash', turn: 2, step: 3, time: 1, subCalls: [],
+    }, undefined, owners, [
+      assistantStepNode(2, 9, 'settled', 'q3'),
+      toolStepNode(2, 3, 'q3'),
+    ])} />)
+    expect(owners[0]?.phase).toBe('preparing')
   })
 
   it('forwards one stable disclosure Hook to nested calls and resets only their open state', () => {

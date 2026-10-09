@@ -34,6 +34,30 @@ function preparation(name: string, args = new PartialArguments()): Extract<Props
   } as Extract<Props, { phase: 'preparing' }>
 }
 
+function queued(name: string): Extract<Props, { phase: 'queued' }> {
+  return {
+    phase: 'queued', callId: 'call', toolName: name,
+    block: { phase: 'preparing', args: new PartialArguments(), callId: 'call', name, turn: 1, step: 1, time: 1, subCalls: [] },
+    cwd: '/workspace', t: makeTranslate(en, common), useDisclosure, openFile: vi.fn(), loadImage: vi.fn(),
+    useTodoHistory: vi.fn(), useSession: vi.fn(() => false), useSessions: vi.fn(), renderSlot: vi.fn(() => null),
+    useProjection: vi.fn(() => undefined), revealPanel: vi.fn(() => false), reviewPanel: vi.fn(() => false),
+  } as Extract<Props, { phase: 'queued' }>
+}
+
+describe('tool queued presentation', () => {
+  it.each([['custom_tool', GenericToolCard], ['bash', BashRow]] as const)(
+    '%s renders a committed waiting call as Queued without disclosure',
+    (name, Component) => {
+      const props = queued(name)
+      const view = render(<Component {...props} />)
+      expect(view.container.querySelector('[data-state="queued"]')).not.toBeNull()
+      expect(view.getByText('Queued')).toBeTruthy()
+      expect(view.queryByRole('button')).toBeNull()
+      expect(parsedToolCall(props.block)).toBeNull()
+    },
+  )
+})
+
 describe('tool preparation', () => {
   it.each(['read', 'write', 'edit'])('%s does not expose a malformed completed path as a file link', (name) => {
     const args = PartialArguments.fromText(String.raw`{"file_path":"unsafe.txt\q"}`)

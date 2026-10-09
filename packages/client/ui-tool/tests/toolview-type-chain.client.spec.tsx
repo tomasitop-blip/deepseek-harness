@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ReactNode } from 'react'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type { ToolCallViewProps } from '../src/client/contract/slots.ts'
+import type { StartedToolCallViewProps, ToolCallViewProps } from '../src/client/contract/slots.ts'
 
 describe('toolview type negatives (compile-time; body never runs)', () => {
   it('holds the negative samples as expect-error sites', () => {
@@ -33,6 +33,22 @@ describe('toolview type negatives (compile-time; body never runs)', () => {
         return null
       }
       void drifted
+      const queuedDrift = (props: ToolCallViewProps): ReactNode => {
+        if (props.phase === 'queued') {
+          // @ts-expect-error queued carries the preparing block: no complete arguments
+          void props.block.argsRaw
+          // @ts-expect-error queued carries no result content
+          void props.block.content
+        }
+        return null
+      }
+      void queuedDrift
+      const startedExcludesQueued = (started: StartedToolCallViewProps): ReactNode => {
+        // @ts-expect-error started views exclude the queued arm: both lack durable call material
+        if (started.phase === 'queued') return null
+        return null
+      }
+      void startedExcludesQueued
       return null as ReactNode
     }
     expect(negatives).toBeTypeOf('function')

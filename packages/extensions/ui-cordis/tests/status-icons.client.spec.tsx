@@ -47,6 +47,23 @@ describe('Cordis tool failure icons', () => {
     expect(unused).not.toHaveBeenCalled()
   })
 
+  it.each([
+    ['cordis_define', CordisDefineRow], ['cordis_run', CordisRunRow],
+    ['cordis_stop', CordisActionRow], ['cordis_undefine', CordisActionRow],
+  ] as const)('%s renders a queued call like preparation without invoking its hooks', (toolName, Component) => {
+    const unused = vi.fn(() => { throw new Error('a queued row must not read execution details') })
+    const props = {
+      ...callbacks,
+      phase: 'queued', toolName, callId: 'call', t,
+      block: { phase: 'preparing', args: PartialArguments.EMPTY, name: toolName, callId: 'call', turn: 1, step: 1, time: 1, subCalls: [] },
+      useInventory: unused, useLoaded: unused, useRunCards: unused, useActiveRuns: unused, useDisclosure: unused,
+    } as Parameters<typeof CordisDefineRow>[0] & Parameters<typeof CordisRunRow>[0]
+    const view = render(<Component {...props} />)
+    expect(view.container.querySelector('[data-state="preparing"] svg')).not.toBeNull()
+    expect(view.queryByRole('button')).toBeNull()
+    expect(unused).not.toHaveBeenCalled()
+  })
+
   it('retains the code glyph for define and run failures', () => {
     const common = {
       ...callbacks,

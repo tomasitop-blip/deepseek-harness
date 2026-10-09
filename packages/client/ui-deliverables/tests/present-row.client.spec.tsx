@@ -16,6 +16,15 @@ function props(block: Props['block'], inspect?: () => void): Props {
   return { ...('kind' in block ? { phase: 'result' as const, block: block } : { phase: block.phase, block: block }), callId: 'p', toolName: 'present', openFile: vi.fn(), inspect, t: makeTranslate(en) } as Props
 }
 
+/** A committed call still waiting to run: the queued stage over the preparing block. */
+function queuedProps(): Props {
+  return {
+    phase: 'queued',
+    block: { phase: 'preparing', args: PartialArguments.EMPTY, callId: 'p', name: 'present', turn: 1, step: 1, time: 1, subCalls: [] },
+    callId: 'p', toolName: 'present', openFile: vi.fn(), t: makeTranslate(en),
+  } as Props
+}
+
 it('discloses the saved result and offers call inspection', () => {
   const inspect = vi.fn()
   const view = render(<PresentRow {...props(settled, inspect)} />)
@@ -38,6 +47,15 @@ it('shows a non-expandable preparation before delivery arguments exist', () => {
   const view = render(<PresentRow {...props({
     phase: 'preparing', args: PartialArguments.EMPTY, callId: 'p', name: 'present', turn: 1, step: 1, time: 1, subCalls: [],
   })} useDisclosure={useDisclosure} />)
+  expect(view.container.querySelector('[data-state="preparing"] svg')).not.toBeNull()
+  expect(view.queryByRole('button')).toBeNull()
+  expect(view.container.querySelector('pre')).toBeNull()
+  expect(useDisclosure).not.toHaveBeenCalled()
+})
+
+it('shows the queued wait like preparation, without disclosure', () => {
+  const useDisclosure = vi.fn(() => { throw new Error('a queued row must not subscribe to disclosure resets') })
+  const view = render(<PresentRow {...queuedProps()} useDisclosure={useDisclosure} />)
   expect(view.container.querySelector('[data-state="preparing"] svg')).not.toBeNull()
   expect(view.queryByRole('button')).toBeNull()
   expect(view.container.querySelector('pre')).toBeNull()

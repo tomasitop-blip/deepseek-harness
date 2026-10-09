@@ -64,6 +64,23 @@ describe('SkillRow', () => {
     expect(view.container.querySelector('pre')).toBeNull()
   })
 
+  it('renders a queued call like preparation, without arguments or disclosure', () => {
+    const owner: ToolCallOwnerProps = {
+      callId: 'call-skill',
+      toolName: 'skill',
+      phase: 'queued',
+      block: { phase: 'preparing', args: PartialArguments.EMPTY, callId: 'call-skill', name: 'skill', turn: 1, step: 1, time: 1, subCalls: [] },
+      useDisclosure: () => ({ expanded: false, setExpanded: vi.fn(), toggle: vi.fn() }),
+      loadImage: vi.fn<ToolCallOwnerProps['loadImage']>(),
+      openFile: vi.fn(),
+    }
+    const view = render(<SkillRow {...{ ...owner, t } as SkillRowProps} />)
+    expect(view.getByText('准备加载技能')).toBeTruthy()
+    expect(view.container.querySelector('[data-state="preparing"]')).not.toBeNull()
+    expect(view.queryByRole('button')).toBeNull()
+    expect(view.container.querySelector('pre')).toBeNull()
+  })
+
   it('renders a compact Bash-shaped summary and discloses the exact instructions', () => {
     const inspect = vi.fn()
     const view = render(<SkillRow {...props(settled(), inspect)} />)
