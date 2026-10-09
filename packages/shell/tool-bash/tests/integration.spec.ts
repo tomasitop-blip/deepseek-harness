@@ -1,7 +1,7 @@
-import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, ToolCallId, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
@@ -91,6 +91,22 @@ async function pollUntil(predicate: () => boolean, timeoutMs = 5_000): Promise<v
     await new Promise(resolve => setTimeout(resolve, 20))
   }
   throw new Error(`condition not met within ${timeoutMs}ms`)
+}
+
+/** One assistant response containing the supplied sibling tool calls. */
+function multiCall(calls: { id: string; name: string; args: object }[]): StreamChunk[] {
+  const chunks: StreamChunk[] = []
+  calls.forEach((call, index) => {
+    chunks.push(
+      { type: 'block-start', index, blockType: 'tool-call' },
+      { type: 'block-end', index, block: { type: 'tool-call', id: ToolCallId(call.id), name: call.name, arguments: JSON.stringify(call.args) } },
+    )
+  })
+  chunks.push(
+    { type: 'usage', usage: { inputTokens: 5, outputTokens: 5 } },
+    { type: 'finish', reason: { kind: 'tool-calls' } },
+  )
+  return chunks
 }
 
 describe('bash tool through the agent loop', () => {
@@ -206,6 +222,41 @@ describe('bash tool through the agent loop', () => {
     const toolResult = findEvent(events(agent), 'tool/result')
     expect(toolResult.data.message.isError).toBe(false)
     expect(resultText(toolResult)).toContain('[exit code: 9]')
+  })
+
+  it('sibling bash calls in one step both start before either completes', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-bash-overlap-'))
+    dirs.push(root)
+    const marker = (id: string, kind: 'start' | 'end'): string => join(root, `${id}-${kind}`)
+    // Each command records its own start, then waits a bounded interval for the
+    // sibling's start marker before recording its end: `overlap: yes` therefore
+    // means the sibling had started before this call completed, and serialized
+    // calls report `overlap: no` within the bound instead of hanging.
+    const overlapCommand = (id: string, sibling: string): string => [
+      `printf start > "${marker(id, 'start')}"`,
+      `i=0; while [ ! -f "${marker(sibling, 'start')}" ] && [ "$i" -lt 60 ]; do sleep 0.02; i=$((i + 1)); done`,
+      `[ -f "${marker(sibling, 'start')}" ] && echo 'overlap: yes' || echo 'overlap: no'`,
+      `printf end > "${marker(id, 'end')}"`,
+    ].join('; ')
+    const adapter = new MockAdapter([
+      multiCall([
+        { id: 'call-1', name: 'bash', args: { command: overlapCommand('a', 'b'), description: 'wait for sibling start' } },
+        { id: 'call-2', name: 'bash', args: { command: overlapCommand('b', 'a'), description: 'wait for sibling start' } },
+      ]),
+      textResponse('Both commands overlapped.'),
+    ])
+    const ctx = await harness(adapter)
+    const agent = await ctx.agentLoop.create(SessionId('it-overlap'), { provider: 'mock', model: 'mock' })
+
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'run two waiting commands' }], source: { kind: 'user' } }))
+    await waitForIdle(ctx, agent)
+
+    const results = events(agent).filter(event => event.type === 'tool/result')
+    expect(results.map(resultText)).toEqual(['overlap: yes\n', 'overlap: yes\n'])
+    for (const id of ['a', 'b']) {
+      expect(existsSync(marker(id, 'start'))).toBe(true)
+      expect(existsSync(marker(id, 'end'))).toBe(true)
+    }
   })
 
   it('background: start ack → completion wakes the idle agent → job_output collects it', async () => {
