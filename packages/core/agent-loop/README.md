@@ -35,6 +35,7 @@ Agents declared in the config start automatically when the plugin loads. Each en
 - name: '@deepseek-ai/dsh-agent-loop'
   config:
     maxParallelToolCalls: 10
+    maxToolCallsPerStep: 64
     agents:
       - id: 'main'
         provider: deepseek
@@ -46,6 +47,7 @@ Agents declared in the config start automatically when the plugin loads. Each en
 | Field | Default | Meaning |
 |---|---|---|
 | `maxParallelToolCalls` | `10` | Parallel-safe tool calls in flight per step; `1` is serial |
+| `maxToolCallsPerStep` | `64` | Tool calls one assistant step may carry; a step streaming more fails the turn instead of executing them |
 | `agents[].id` | required | Stable label; a fresh session mints `${id}-session-<uuid>` unless `sessionId` is set |
 | `agents[].provider` / `agents[].model` | — | Model route; both required before dispatch |
 | `agents[].reasoningEffort` | — | Non-empty initial reasoning effort; `agent/request` may override it |
@@ -103,7 +105,7 @@ The loop deep-freezes each derived message identity on its first request and reu
 | [`src/inbox.ts`](src/inbox.ts) | Package-internal `ReactLoopInbox`: durable projection, structural commands, and loop-only claim state |
 | [`src/tool-calls.ts`](src/tool-calls.ts) | Tool scheduling: exclusive barriers and the bounded parallel pool |
 | [`src/runtime-context.ts`](src/runtime-context.ts) | Per-step runtime-context snapshot handling |
-| [`src/constants.ts`](src/constants.ts) | `DEFAULT_MAX_PARALLEL_TOOL_CALLS` |
+| [`src/constants.ts`](src/constants.ts) | `DEFAULT_MAX_PARALLEL_TOOL_CALLS`, `DEFAULT_MAX_TOOL_CALLS_PER_STEP` |
 
 ### Creation and teardown
 

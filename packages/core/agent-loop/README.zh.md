@@ -35,6 +35,7 @@ kind: "package-reference"
 - name: '@deepseek-ai/dsh-agent-loop'
   config:
     maxParallelToolCalls: 10
+    maxToolCallsPerStep: 64
     agents:
       - id: 'main'
         provider: deepseek
@@ -46,6 +47,7 @@ kind: "package-reference"
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `maxParallelToolCalls` | `10` | 每个步骤同时在途的并行安全工具调用数；`1` 为串行 |
+| `maxToolCallsPerStep` | `64` | 单个助手步骤可携带的工具调用数上限；流式产出更多的步骤会以错误结束本轮，而不会执行这些调用 |
 | `agents[].id` | 必填 | 稳定标签；未设置 `sessionId` 时，全新会话会生成 `${id}-session-<uuid>` |
 | `agents[].provider` / `agents[].model` | — | 模型路由；分发前两者都必须存在 |
 | `agents[].reasoningEffort` | — | 非空的初始推理强度；`agent/request` 可以覆盖它 |
@@ -103,7 +105,7 @@ const handle = await ctx.agents.create({
 | [`src/inbox.ts`](src/inbox.ts) | 包内部的 `ReactLoopInbox`：持久投影、结构化命令与仅供循环使用的领取状态 |
 | [`src/tool-calls.ts`](src/tool-calls.ts) | 工具调度：独占屏障与有界并行池 |
 | [`src/runtime-context.ts`](src/runtime-context.ts) | 逐步骤运行时上下文快照处理 |
-| [`src/constants.ts`](src/constants.ts) | `DEFAULT_MAX_PARALLEL_TOOL_CALLS` |
+| [`src/constants.ts`](src/constants.ts) | `DEFAULT_MAX_PARALLEL_TOOL_CALLS`、`DEFAULT_MAX_TOOL_CALLS_PER_STEP` |
 
 ### 创建与拆除
 

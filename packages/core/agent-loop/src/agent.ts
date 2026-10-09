@@ -548,6 +548,13 @@ export class ReactLoopAgent implements Agent {
 
         const toolCalls = message.content.filter(block => block.type === 'tool-call')
         if (toolCalls.length === 0) return { kind: 'completed' }
+        const maxToolCallsPerStep = this.loopCtx.agentLoop.config.maxToolCallsPerStep.get()
+        if (toolCalls.length > maxToolCallsPerStep) {
+          throw new LlmError(
+            `one assistant step produced ${toolCalls.length} tool calls, over the maxToolCallsPerStep limit of ${maxToolCallsPerStep}: split the work across steps, or raise the agent-loop maxToolCallsPerStep configuration`,
+            'TOOL_CALL_LIMIT_EXCEEDED',
+          )
+        }
         const { concluded } = await executeToolCalls(
           this.loopCtx, turn, step, toolCalls, signal,
           context => this.inbox.splice('next-step', this.inbox.nextStep.length, 0, [context]),
